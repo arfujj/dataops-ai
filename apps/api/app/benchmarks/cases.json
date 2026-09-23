@@ -1,0 +1,82 @@
+[
+  {
+    "name": "schema_type_drift",
+    "description": "A raw identifier changes from BIGINT to VARCHAR before a model cast fails.",
+    "fixture": {"incident": {"id": "bench-01", "title": "Breaking schema change: raw.orders", "description": "customer_id changed type before transformation failure", "category": "SCHEMA_DRIFT", "entity_ref": "raw.orders"}, "schema_changes": [{"column_name": "customer_id", "previous_type": "BIGINT", "current_type": "VARCHAR", "classification": "BREAKING"}], "failed_runs": [{"error_message": "invalid input syntax for BIGINT"}], "evidence": [{"id": "e-01", "type": "SCHEMA_CHANGE", "summary": "customer_id changed from BIGINT to VARCHAR", "details": {}}], "downstream_assets": [{"dataset_id": "a1", "name": "staging.stg_orders", "asset_type": "MODEL", "depth": 1, "path": ["raw.orders", "staging.stg_orders"]}, {"dataset_id": "a2", "name": "analytics.fact_orders", "asset_type": "MODEL", "depth": 2, "path": ["raw.orders", "staging.stg_orders", "analytics.fact_orders"]}]},
+    "expected_root_cause_category": "schema_drift",
+    "expected_affected_assets": ["staging.stg_orders", "analytics.fact_orders"],
+    "expected_remediation_actions": ["update_staging_cast", "run_model_tests"]
+  },
+  {
+    "name": "missing_partition",
+    "description": "A scheduled transform fails because the expected source partition is absent.",
+    "fixture": {"incident": {"id": "bench-02", "title": "Pipeline failed: hourly_events", "description": "The 2026-09-21 partition was not found", "category": "PIPELINE_FAILURE", "entity_ref": "hourly_events"}, "schema_changes": [], "failed_runs": [{"error_message": "missing partition ds=2026-09-21", "logs": "partition sensor timed out"}], "evidence": [{"id": "e-02", "type": "TELEMETRY_EVENT", "summary": "upstream partition sensor did not observe ds=2026-09-21", "details": {}}], "downstream_assets": [{"dataset_id": "b1", "name": "staging.stg_events", "asset_type": "MODEL", "depth": 1, "path": ["raw.events", "staging.stg_events"]}, {"dataset_id": "b2", "name": "analytics.event_activity", "asset_type": "MODEL", "depth": 2, "path": ["raw.events", "staging.stg_events", "analytics.event_activity"]}]},
+    "expected_root_cause_category": "pipeline_failure",
+    "expected_affected_assets": ["staging.stg_events", "analytics.event_activity"],
+    "expected_remediation_actions": ["restore_partition", "retry_transform"]
+  },
+  {
+    "name": "duplicate_ingestion",
+    "description": "A replayed batch produces duplicate transaction identifiers and fails uniqueness.",
+    "fixture": {"incident": {"id": "bench-03", "title": "Uniqueness anomaly: raw.transactions", "description": "A source retry ingested the same batch twice", "category": "QUALITY_FAILURE", "entity_ref": "raw.transactions"}, "schema_changes": [], "failed_runs": [], "evidence": [{"id": "e-03", "type": "QUALITY_RESULT", "summary": "duplicate transaction_id rate rose to 11.4 percent", "details": {"source": "retry batch 824 duplicated"}}], "downstream_assets": [{"dataset_id": "c1", "name": "analytics.fact_transactions", "asset_type": "MODEL", "depth": 1, "path": ["raw.transactions", "analytics.fact_transactions"]}]},
+    "expected_root_cause_category": "quality_anomaly",
+    "expected_affected_assets": ["analytics.fact_transactions"],
+    "expected_remediation_actions": ["deduplicate_batch", "rerun_uniqueness_check"]
+  },
+  {
+    "name": "unexpected_null_spike",
+    "description": "A null-rate check rises from a small baseline to a severe anomaly.",
+    "fixture": {"incident": {"id": "bench-04", "title": "Null rate anomaly: staging.customers", "description": "customer_id null rate exceeded the configured threshold", "category": "QUALITY_FAILURE", "entity_ref": "staging.customers"}, "schema_changes": [], "failed_runs": [], "evidence": [{"id": "e-04", "type": "QUALITY_RESULT", "summary": "observed null rate 17.3 percent; historical median 0.01 percent", "details": {"column": "customer_id", "threshold": 0.02}}], "downstream_assets": [{"dataset_id": "d1", "name": "analytics.customer_ltv", "asset_type": "MODEL", "depth": 1, "path": ["staging.customers", "analytics.customer_ltv"]}]},
+    "expected_root_cause_category": "quality_anomaly",
+    "expected_affected_assets": ["analytics.customer_ltv"],
+    "expected_remediation_actions": ["inspect_source_nulls", "validate_quality_check"]
+  },
+  {
+    "name": "pipeline_timeout",
+    "description": "A pipeline exceeds its normal execution window and stops making progress.",
+    "fixture": {"incident": {"id": "bench-05", "title": "Pipeline timeout: customer_rollup", "description": "Run exceeded its 40 minute SLA", "category": "PIPELINE_FAILURE", "entity_ref": "customer_rollup"}, "schema_changes": [], "failed_runs": [{"error_message": "task exceeded execution timeout", "logs": "worker heartbeat missing for 22 minutes"}], "evidence": [{"id": "e-05", "type": "TELEMETRY_EVENT", "summary": "customer_rollup runtime is 3.8x its 30 day p95", "details": {}}], "downstream_assets": [{"dataset_id": "e1", "name": "analytics.customer_summary", "asset_type": "MODEL", "depth": 1, "path": ["staging.customer_rollup", "analytics.customer_summary"]}]},
+    "expected_root_cause_category": "pipeline_failure",
+    "expected_affected_assets": ["analytics.customer_summary"],
+    "expected_remediation_actions": ["inspect_task_logs", "retry_after_worker_recovery"]
+  },
+  {
+    "name": "broken_sql_deployment",
+    "description": "A deployment removes a referenced column and the next model run fails compilation.",
+    "fixture": {"incident": {"id": "bench-06", "title": "Pipeline failed after dbt deployment", "description": "A model references a missing column after commit 8fd92c", "category": "PIPELINE_FAILURE", "entity_ref": "dbt_build"}, "schema_changes": [], "failed_runs": [{"error_message": "column legacy_status does not exist"}], "evidence": [{"id": "e-06", "type": "DEPLOYMENT", "summary": "dbt commit 8fd92c deployed 3 minutes before failure", "details": {"changed_models": ["stg_orders"]}}], "downstream_assets": [{"dataset_id": "f1", "name": "analytics.fact_orders", "asset_type": "MODEL", "depth": 1, "path": ["staging.stg_orders", "analytics.fact_orders"]}]},
+    "expected_root_cause_category": "pipeline_failure",
+    "expected_affected_assets": ["analytics.fact_orders"],
+    "expected_remediation_actions": ["review_deployed_sql", "run_dbt_tests"]
+  },
+  {
+    "name": "stale_upstream_source",
+    "description": "The upstream source has stopped updating and downstream freshness checks fail.",
+    "fixture": {"incident": {"id": "bench-07", "title": "Source freshness failed: raw.inventory", "description": "No source updates observed in 4 hours", "category": "QUALITY_FAILURE", "entity_ref": "raw.inventory"}, "schema_changes": [], "failed_runs": [], "evidence": [{"id": "e-07", "type": "QUALITY_RESULT", "summary": "maximum ingested_at is 4 hours old", "details": {"connector": "warehouse-postgres"}}], "downstream_assets": [{"dataset_id": "g1", "name": "staging.inventory", "asset_type": "MODEL", "depth": 1, "path": ["raw.inventory", "staging.inventory"]}, {"dataset_id": "g2", "name": "analytics.inventory_status", "asset_type": "MODEL", "depth": 2, "path": ["raw.inventory", "staging.inventory", "analytics.inventory_status"]}]},
+    "expected_root_cause_category": "quality_anomaly",
+    "expected_affected_assets": ["staging.inventory", "analytics.inventory_status"],
+    "expected_remediation_actions": ["check_source_ingestion", "rerun_freshness_check"]
+  },
+  {
+    "name": "connector_authentication_failure",
+    "description": "A source connector starts rejecting requests after its credential expires.",
+    "fixture": {"incident": {"id": "bench-08", "title": "Connector error: billing_postgres", "description": "Authentication failed while polling source metadata", "category": "CONNECTOR_FAILURE", "entity_ref": "billing_postgres"}, "schema_changes": [], "failed_runs": [], "evidence": [{"id": "e-08", "type": "TELEMETRY_EVENT", "summary": "password authentication failed for replication user", "details": {"connector_state": "ERROR", "secret_rotated_at": "unknown"}}], "downstream_assets": [{"dataset_id": "h1", "name": "raw.billing_events", "asset_type": "TABLE", "depth": 1, "path": ["billing_postgres", "raw.billing_events"]}]},
+    "expected_root_cause_category": "connector_failure",
+    "expected_affected_assets": ["raw.billing_events"],
+    "expected_remediation_actions": ["verify_connector_credentials", "test_connection"]
+  },
+  {
+    "name": "incorrect_join_row_explosion",
+    "description": "A many-to-many join increases output rows after a model change.",
+    "fixture": {"incident": {"id": "bench-09", "title": "Row count anomaly: customer_orders", "description": "Joined model output grew unexpectedly", "category": "QUALITY_FAILURE", "entity_ref": "analytics.customer_orders"}, "schema_changes": [], "failed_runs": [], "evidence": [{"id": "e-09", "type": "QUALITY_RESULT", "summary": "row count grew 6.4x after a join key change", "details": {"previous_join": "customer_id", "current_join": "email"}}], "downstream_assets": [{"dataset_id": "i1", "name": "analytics.customer_ltv", "asset_type": "MODEL", "depth": 1, "path": ["analytics.customer_orders", "analytics.customer_ltv"]}]},
+    "expected_root_cause_category": "quality_anomaly",
+    "expected_affected_assets": ["analytics.customer_ltv"],
+    "expected_remediation_actions": ["review_join_cardinality", "compare_row_counts"]
+  },
+  {
+    "name": "delayed_ingestion_dashboard_freshness",
+    "description": "Late source arrival leaves a dashboard-facing aggregate stale.",
+    "fixture": {"incident": {"id": "bench-10", "title": "Freshness failed: executive_metrics", "description": "The scheduled source arrived after the dashboard refresh window", "category": "QUALITY_FAILURE", "entity_ref": "analytics.executive_metrics"}, "schema_changes": [], "failed_runs": [], "evidence": [{"id": "e-10", "type": "QUALITY_RESULT", "summary": "latest source partition arrived 96 minutes late; freshness SLA is 30 minutes", "details": {"source_event": "dataset.updated"}}], "downstream_assets": [{"dataset_id": "j1", "name": "dashboard.executive_metrics", "asset_type": "DASHBOARD", "depth": 1, "path": ["analytics.executive_metrics", "dashboard.executive_metrics"]}]},
+    "expected_root_cause_category": "quality_anomaly",
+    "expected_affected_assets": ["dashboard.executive_metrics"],
+    "expected_remediation_actions": ["verify_source_arrival", "refresh_dashboard_after_backfill"]
+  }
+]

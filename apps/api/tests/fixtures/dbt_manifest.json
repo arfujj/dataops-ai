@@ -1,0 +1,36 @@
+{
+  "metadata": {"dbt_version": "1.9.0"},
+  "nodes": {
+    "model.demo.stg_orders": {
+      "unique_id": "model.demo.stg_orders",
+      "resource_type": "model",
+      "name": "stg_orders",
+      "database": "warehouse",
+      "schema": "staging",
+      "description": "Cleaned order records",
+      "tags": ["daily", "core"],
+      "columns": {
+        "order_id": {"name": "order_id", "data_type": "BIGINT", "description": "Source order key"},
+        "customer_id": {"name": "customer_id", "data_type": "BIGINT"}
+      },
+      "depends_on": {"nodes": ["source.demo.raw.orders"]}
+    }
+  },
+  "sources": {
+    "source.demo.raw.orders": {
+      "unique_id": "source.demo.raw.orders",
+      "resource_type": "source",
+      "source_name": "raw",
+      "name": "orders",
+      "database": "warehouse",
+      "schema": "public",
+      "description": "Raw order ingestion",
+      "tags": ["source"],
+      "columns": {
+        "order_id": {"name": "order_id", "data_type": "BIGINT", "nullable": false},
+        "customer_id": {"name": "customer_id", "data_type": "BIGINT"}
+      },
+      "depends_on": {"nodes": []}
+    }
+  }
+}
